@@ -10,11 +10,16 @@ app = FastAPI()
 # Enable CORS for frontend communication
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],  # Adjust frontend port if needed
+    allow_origins=[
+        "http://localhost:5173", 
+        "http://localhost:3000",
+        "https://automated-code-review.vercel.app"  # ADD YOUR LIVE FRONTEND DOMAIN
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # Tip/Resource suggestions
 resources = {
