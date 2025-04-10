@@ -2,6 +2,8 @@ from fastapi import FastAPI, File, UploadFile
 import subprocess
 import os
 import json
+import joblib
+import re
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -13,13 +15,15 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173", 
         "http://localhost:3000",
-        "https://automated-code-review.vercel.app"  # ADD YOUR LIVE FRONTEND DOMAIN
+        "https://automated-code-review.vercel.app"  
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Load ML Model at startup
+ml_model = joblib.load('ml_model.joblib')
 
 # Tip/Resource suggestions
 resources = {
@@ -65,6 +69,15 @@ def generate_human_readable_report(pylint_output):
     except json.JSONDecodeError:
         return [{"message": "Failed to parse Pylint output."}]
 
+def extract_features_from_code(code_text):
+    """Extract the same features expected by the ML model"""
+    num_functions = len(re.findall(r'def ', code_text))
+    num_comments = len(re.findall(r'#', code_text))
+    num_todos = len(re.findall(r'TODO', code_text))
+    total_lines = len(code_text.splitlines())
+    comment_ratio = num_comments / total_lines if total_lines > 0 else 0
+    return [[num_functions, num_comments, num_todos, total_lines, comment_ratio]]
+
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
     try:
@@ -72,14 +85,17 @@ async def upload_file(file: UploadFile = File(...)):
         file_location = f"temp/{file.filename}"
 
         with open(file_location, "wb") as f:
-            f.write(await file.read())
+            content = await file.read()
+            f.write(content)
 
+        # Run Pylint
         result = subprocess.run(
             ["pylint", file_location, "--output-format=json"],
             capture_output=True,
             text=True
         )
 
+        # Get Score
         score_output = subprocess.run(
             ["pylint", file_location],
             capture_output=True,
@@ -94,11 +110,16 @@ async def upload_file(file: UploadFile = File(...)):
 
         formatted_output = generate_human_readable_report(result.stdout or "[]")
 
-        # Count problems only if they are not "No issues found"
         if formatted_output and formatted_output[0].get("message") == "No issues found. ✅":
             problem_count = 0
         else:
             problem_count = len(formatted_output)
+
+        # Predict Code Quality Using ML
+        code_text = content.decode("utf-8", errors="ignore")
+        features = extract_features_from_code(code_text)
+        prediction = ml_model.predict(features)[0]
+        prediction_label = "Good Code" if prediction == 1 else "Needs Improvement"
 
         os.remove(file_location)
 
@@ -109,7 +130,8 @@ async def upload_file(file: UploadFile = File(...)):
                 "message": "File uploaded and analyzed.",
                 "output": formatted_output,
                 "score": score,
-                "problem_count": problem_count  # ✅ Added here!
+                "problem_count": problem_count,
+                "ml_prediction": prediction_label  
             }
         )
 

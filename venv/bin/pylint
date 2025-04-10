@@ -1,6 +1,4 @@
-#!/bin/sh
-'''exec' "/Users/user/Documents/Web Automated Code Review/web-automated-code-review/backend/venv/bin/python3.12" "$0" "$@"
-' '''
+#!/Users/user/Documents/Automated-Code-Review-Project/backend-review-clean/venv/bin/python3.12
 # -*- coding: utf-8 -*-
 import re
 import sys
